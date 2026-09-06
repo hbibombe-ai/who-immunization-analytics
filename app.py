@@ -2,16 +2,21 @@ from __future__ import annotations
 
 import io
 import unicodedata
+from datetime import datetime
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import plotly.express as px
+import requests
 import streamlit as st
+from streamlit_autorefresh import st_autorefresh
 
 
 APP_DIR = Path(__file__).resolve().parent
 DEMO_FILE = APP_DIR / "data" / "donnees_pev_simulees.csv"
+DEFAULT_KOBO_SERVER = "eu.kobotoolbox.org"
+DEFAULT_KOBO_ASSET_UID = "ah2PC96Nnis5qfkkAAVqwF"
 MONTHS = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"]
 VACCINES = {
     "BCG": "bcg",
@@ -73,14 +78,56 @@ def load_demo() -> pd.DataFrame:
     return pd.read_csv(DEMO_FILE, encoding="utf-8-sig")
 
 
+@st.cache_data(ttl=300, show_spinner="Synchronisation avec KoboToolbox…")
+def load_kobo(server: str, asset_uid: str, token: str) -> tuple[pd.DataFrame, str]:
+    server = server.removeprefix("https://").removeprefix("http://").rstrip("/")
+    url = f"https://{server}/api/v2/assets/{asset_uid}/data/"
+    headers = {"Authorization": f"Token {token}"}
+    submissions = []
+    while url:
+        response = requests.get(url, headers=headers, timeout=60)
+        response.raise_for_status()
+        page = response.json()
+        submissions.extend(page.get("results", []))
+        url = page.get("next")
+    return pd.DataFrame(submissions), datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
+
+
+def kobo_settings() -> dict[str, str] | None:
+    try:
+        cfg = st.secrets.get("kobo", {})
+        token = str(cfg.get("token", "")).strip()
+        if token:
+            return {"token": token, "server": str(cfg.get("server", DEFAULT_KOBO_SERVER)), "asset_uid": str(cfg.get("asset_uid", DEFAULT_KOBO_ASSET_UID))}
+    except (FileNotFoundError, KeyError):
+        pass
+    return None
+
+
 def prepare(raw: pd.DataFrame) -> pd.DataFrame:
     frame = raw.copy()
+    # L’API Kobo conserve le chemin des groupes. On crée un alias avec le nom court.
+    for original in list(frame.columns):
+        short = str(original).rsplit("/", 1)[-1]
+        if short not in frame.columns:
+            frame[short] = frame[original]
     rename = {col: SOURCE_COLUMNS.get(norm(col), norm(col).replace(" ", "_")) for col in frame.columns}
     frame = frame.rename(columns=rename)
-    required = ["year", "month", "region", "district", "target", *VACCINES.values(), "reports_expected", "reports_received", "reports_timely", "latitude", "longitude"]
+    # Correspondance entre les noms internes du nouveau XLSForm et le modèle analytique.
+    form_aliases = {"population_cible":"target", "bcg_vaccines":"bcg", "penta1_vaccines":"penta1", "penta3_vaccines":"penta3", "vpi_vaccines":"vpi", "rougeole_vaccines":"rougeole", "hpv_vaccines":"hpv", "rapports_attendus":"reports_expected", "rapports_recus":"reports_received", "rapports_a_temps":"reports_timely"}
+    frame = frame.rename(columns={k:v for k,v in form_aliases.items() if k in frame.columns and v not in frame.columns})
+    required = ["year", "month", "region", "district", "target", *VACCINES.values(), "reports_expected", "reports_received", "reports_timely"]
     missing = [name for name in required if name not in frame.columns]
     if missing:
         raise ValueError("Colonnes absentes : " + ", ".join(missing))
+    # Le geopoint Kobo contient latitude, longitude, altitude et précision.
+    if "latitude" not in frame.columns: frame["latitude"] = np.nan
+    if "longitude" not in frame.columns: frame["longitude"] = np.nan
+    if "coordonnees_gps" in frame.columns:
+        gps = frame["coordonnees_gps"].fillna("").astype(str).str.split(expand=True)
+        if gps.shape[1] >= 2:
+            frame["latitude"] = frame["latitude"].fillna(pd.to_numeric(gps[0], errors="coerce"))
+            frame["longitude"] = frame["longitude"].fillna(pd.to_numeric(gps[1], errors="coerce"))
     numeric = ["year", "target", *VACCINES.values(), "reports_expected", "reports_received", "reports_timely", "latitude", "longitude"]
     for name in numeric:
         frame[name] = pd.to_numeric(frame[name], errors="coerce")
@@ -109,10 +156,15 @@ def prepare(raw: pd.DataFrame) -> pd.DataFrame:
     frame["flag_dropout"] = frame["dropout"] > .10
     frame["dqa_issue"] = frame[["flag_coverage", "flag_penta", "flag_reporting", "flag_missing", "flag_quality", "flag_variation"]].any(axis=1)
     frame["priority_score"] = ((1 - frame["cov_penta3"]).clip(lower=0) * 40 + frame["dropout"].clip(lower=0) * 30 + (1 - frame["completeness"]).clip(lower=0) * 20 + (1 - frame["timeliness"]).clip(lower=0) * 10)
-    seed = (frame["year"] * 100 + frame["month_num"] * 7 + frame["district"].astype(str).map(lambda x: sum(map(ord, x)))).astype(int)
-    frame["cas_rougeole"] = (seed % 9 + (frame["cov_rougeole"] < .80).astype(int) * 4).astype(int)
-    frame["cas_pfa"] = (seed % 4).astype(int)
-    frame["cas_tetanos_neonatal"] = (seed % 3).astype(int)
+    disease_fields = ["cas_rougeole", "cas_pfa", "cas_tetanos_neonatal"]
+    if all(name in frame.columns for name in disease_fields):
+        for name in disease_fields: frame[name] = pd.to_numeric(frame[name], errors="coerce").fillna(0)
+        frame["surveillance_simulee"] = False
+    else:
+        seed = (frame["year"] * 100 + frame["month_num"] * 7 + frame["district"].astype(str).map(lambda x: sum(map(ord, x)))).astype(int)
+        frame["cas_rougeole"] = (seed % 9 + (frame["cov_rougeole"] < .80).astype(int) * 4).astype(int)
+        frame["cas_pfa"] = (seed % 4).astype(int); frame["cas_tetanos_neonatal"] = (seed % 3).astype(int)
+        frame["surveillance_simulee"] = True
     return frame
 
 
@@ -160,14 +212,30 @@ PLOT_CONFIG = {"displaylogo": False, "responsive": True, "toImageButtonOptions":
 
 st.markdown('<section class="hero"><small>CAS D’ÉTUDE PEV</small><h1>WHO Immunization Analytics</h1><p>Couverture vaccinale, abandon, enfants zéro dose, qualité des données et priorisation géographique.</p></section>', unsafe_allow_html=True)
 uploaded = st.sidebar.file_uploader("Importer les données PEV", type=["xlsx", "xls", "csv"])
+kobo = kobo_settings()
+st_autorefresh(interval=5 * 60 * 1000, key="synchronisation_kobo_pev")
 try:
-    raw = read_file(uploaded.getvalue(), uploaded.name) if uploaded else load_demo()
+    if kobo:
+        if st.sidebar.button("Actualiser Kobo maintenant", width="stretch"):
+            load_kobo.clear()
+        raw, last_sync = load_kobo(kobo["server"], kobo["asset_uid"], kobo["token"])
+        source_name = f"KoboToolbox · synchronisé le {last_sync}"
+        st.sidebar.success("KoboToolbox connecté")
+    elif uploaded:
+        raw = read_file(uploaded.getvalue(), uploaded.name); source_name = uploaded.name
+    else:
+        raw = load_demo(); source_name = "données simulées 2024–2026"
     df = prepare(raw)
+except requests.HTTPError as exc:
+    status = exc.response.status_code if exc.response is not None else "inconnu"
+    st.error(f"Connexion Kobo refusée (HTTP {status}). Vérifiez le jeton et l’accès au projet."); st.stop()
+except requests.RequestException as exc:
+    st.error(f"KoboToolbox est momentanément inaccessible : {exc}"); st.stop()
 except Exception as exc:
     st.error(f"Chargement impossible : {exc}"); st.stop()
 
 with st.sidebar:
-    st.caption("Source : " + (uploaded.name if uploaded else "données simulées 2024–2026"))
+    st.caption("Source : " + source_name)
     st.subheader("Filtres")
     years = sorted(df["year"].unique())
     selected_years = st.multiselect("Année", years, default=years)
@@ -270,7 +338,8 @@ elif module == "Zéro dose":
     st.download_button("Télécharger les données zéro dose", csv_bytes(district), "zero_dose_par_district.csv", "text/csv")
 
 elif module == "Surveillance":
-    st.warning("Les données de maladies affichées sont simulées à des fins de démonstration. Ne pas les utiliser pour une décision sanitaire.")
+    if df["surveillance_simulee"].any(): st.warning("Les données de maladies affichées sont simulées à des fins de démonstration. Ne pas les utiliser pour une décision sanitaire.")
+    else: st.success("Données réelles issues du formulaire KoboToolbox.")
     diseases = {"Rougeole":"cas_rougeole", "PFA":"cas_pfa", "Tétanos néonatal":"cas_tetanos_neonatal"}
     for col, (label, name) in zip(st.columns(3), diseases.items()): col.metric(label, integer(df[name].sum()))
     trend = df.groupby("period", as_index=False)[list(diseases.values())].sum().rename(columns={v:k for k,v in diseases.items()}).melt("period", var_name="Maladie", value_name="Cas")
