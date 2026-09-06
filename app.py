@@ -39,18 +39,30 @@ SOURCE_COLUMNS = {
 st.set_page_config(page_title="WHO Immunization Analytics", page_icon="💉", layout="wide")
 st.markdown("""
 <style>
-:root{--navy:#17365d;--blue:#2563eb;--green:#15803d;--amber:#d97706;--red:#dc2626;--line:#dbe4ef}
-.stApp{background:#f6f8fb}.block-container{max-width:1500px;padding-top:1rem}
-[data-testid="stSidebar"]{background:#fff;border-right:1px solid var(--line)}
-.hero{background:linear-gradient(120deg,#17365d,#176b73);padding:1.35rem 1.6rem;border-radius:18px;color:#fff;margin-bottom:.9rem}
-.hero h1{color:#fff;font-size:2rem;margin:.15rem 0}.hero p{color:#dcecf2;margin:0}.hero small{font-weight:700;letter-spacing:.12em}
-.cards{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin:.8rem 0 1rem}
-.card{background:#fff;border:1px solid var(--line);border-top:4px solid var(--accent);border-radius:14px;padding:.85rem;box-shadow:0 4px 12px rgba(15,23,42,.05)}
-.label{color:#64748b;font-size:.78rem;font-weight:650;min-height:2.1em}.value{font-size:1.55rem;font-weight:750;color:#172033}.hint{font-size:.72rem;color:var(--accent);font-weight:650}
-div[data-testid="stPlotlyChart"],div[data-testid="stDataFrame"]{background:#fff;border:1px solid var(--line);border-radius:14px;padding:.15rem;overflow:hidden}
-.stDownloadButton button,.stButton button{border-radius:10px;min-height:2.6rem;font-weight:650}
-@media(max-width:900px){.cards{grid-template-columns:repeat(2,minmax(0,1fr))}.hero h1{font-size:1.5rem}}
-@media(max-width:520px){.block-container{padding:.6rem}.cards{grid-template-columns:1fr 1fr}.value{font-size:1.25rem}}
+:root{--navy:#0b2447;--blue:#2563eb;--cyan:#0891b2;--green:#059669;--amber:#d97706;--red:#dc2626;--line:#dce7f2;--ink:#14213d}
+.stApp{background:radial-gradient(circle at 92% 2%,rgba(14,165,233,.10),transparent 25rem),linear-gradient(180deg,#f8fbff 0%,#f4f7fb 100%)}
+.block-container{max-width:1500px;padding-top:1rem;padding-bottom:2.5rem}
+[data-testid="stSidebar"]{background:linear-gradient(180deg,#fff 0%,#f3f8fd 100%);border-right:1px solid #d7e5f2}
+[data-testid="stSidebar"] h2,[data-testid="stSidebar"] h3{color:var(--navy)}
+.hero{position:relative;overflow:hidden;background:linear-gradient(125deg,#0b2447 0%,#075985 48%,#07856f 100%);padding:1.65rem 1.8rem;border-radius:22px;color:#fff;margin-bottom:1rem;box-shadow:0 14px 35px rgba(11,36,71,.18)}
+.hero:before,.hero:after{content:"";position:absolute;border-radius:999px;background:rgba(255,255,255,.08)}
+.hero:before{width:220px;height:220px;right:-60px;top:-130px}.hero:after{width:120px;height:120px;right:130px;bottom:-85px}
+.hero h1{position:relative;color:#fff;font-size:2.15rem;line-height:1.15;margin:.25rem 0 .55rem}.hero p{position:relative;color:#dff7ff;margin:0;font-size:1rem}.hero small{position:relative;color:#a5f3fc;font-weight:800;letter-spacing:.16em}
+.cards{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:13px;margin:1rem 0 1rem}
+.card{position:relative;overflow:hidden;background:linear-gradient(145deg,#fff,#fbfdff);border:1px solid var(--line);border-top:4px solid var(--accent);border-radius:17px;padding:1rem;box-shadow:0 7px 20px rgba(30,64,100,.07);transition:transform .2s ease,box-shadow .2s ease}
+.card:hover{transform:translateY(-3px);box-shadow:0 12px 25px rgba(30,64,100,.12)}
+.card:after{content:"";position:absolute;width:58px;height:58px;border-radius:50%;right:-25px;bottom:-25px;background:var(--accent);opacity:.10}
+.label{color:#52657a;font-size:.79rem;font-weight:750;min-height:2.1em}.value{font-size:1.72rem;font-weight:800;color:var(--ink);letter-spacing:-.03em}.hint{font-size:.73rem;color:var(--accent);font-weight:700;margin-top:.15rem}
+.module-intro{display:flex;gap:.7rem;align-items:center;background:linear-gradient(90deg,#eaf4ff,#eefbf8);border:1px solid #cfe2f3;border-left:5px solid #0891b2;border-radius:12px;padding:.7rem .9rem;margin:.45rem 0 .8rem;color:#27445f;font-size:.88rem}
+div[data-testid="stRadio"]>div{gap:.35rem}div[data-testid="stRadio"] label{background:#fff;border:1px solid #d7e3ee;border-radius:999px;padding:.34rem .62rem;box-shadow:0 2px 6px rgba(30,64,100,.04)}
+div[data-testid="stRadio"] label:has(input:checked){background:linear-gradient(120deg,#e0f2fe,#dcfce7);border-color:#38bdf8;color:#075985;font-weight:700}
+div[data-testid="stPlotlyChart"],div[data-testid="stDataFrame"]{background:rgba(255,255,255,.96);border:1px solid var(--line);border-radius:17px;padding:.25rem;overflow:hidden;box-shadow:0 6px 18px rgba(30,64,100,.06)}
+div[data-testid="stMetric"]{background:#fff;border:1px solid var(--line);border-radius:15px;padding:.8rem 1rem;box-shadow:0 5px 15px rgba(30,64,100,.06)}
+.stDownloadButton button,.stButton button{border-radius:11px;min-height:2.65rem;font-weight:700;border-color:#bdd4e8}.stDownloadButton button:hover,.stButton button:hover{border-color:#0891b2;color:#075985;background:#ecfeff}
+div[data-baseweb="notification"]{border-radius:13px;box-shadow:0 5px 16px rgba(30,64,100,.06)}
+hr{border-color:#dce7f2}
+@media(max-width:900px){.cards{grid-template-columns:repeat(2,minmax(0,1fr))}.hero h1{font-size:1.6rem}.hero{padding:1.3rem}.block-container{padding-left:.8rem;padding-right:.8rem}}
+@media(max-width:520px){.block-container{padding:.55rem}.cards{grid-template-columns:1fr 1fr;gap:8px}.card{padding:.72rem}.value{font-size:1.3rem}.label{font-size:.7rem}.hint{font-size:.65rem}.hero h1{font-size:1.38rem}.hero p{font-size:.84rem}}
 </style>
 """, unsafe_allow_html=True)
 
@@ -210,7 +222,7 @@ def plot_style(fig, height=390):
 
 PLOT_CONFIG = {"displaylogo": False, "responsive": True, "toImageButtonOptions": {"format": "png", "filename": "graphique_pev", "scale": 2}}
 
-st.markdown('<section class="hero"><small>CAS D’ÉTUDE PEV</small><h1>WHO Immunization Analytics</h1><p>Couverture vaccinale, abandon, enfants zéro dose, qualité des données et priorisation géographique.</p></section>', unsafe_allow_html=True)
+st.markdown('<section class="hero"><small>SURVEILLANCE DU PROGRAMME ÉLARGI DE VACCINATION</small><h1>WHO Immunization Analytics</h1><p>Des données de terrain aux décisions : couverture, équité, qualité et priorisation géographique.</p></section>', unsafe_allow_html=True)
 uploaded = st.sidebar.file_uploader("Importer les données PEV", type=["xlsx", "xls", "csv"])
 kobo = kobo_settings()
 st_autorefresh(interval=5 * 60 * 1000, key="synchronisation_kobo_pev")
@@ -273,6 +285,20 @@ else:
     st.success("Aucune alerte active pour les filtres sélectionnés.", icon="✅")
 
 module = st.radio("Module", ["Vue nationale", "Priorisation OMS", "Couverture", "Abandon", "Zéro dose", "Surveillance", "Qualité DQA", "Alertes", "Géospatial", "Rapport OMS", "Assistant analytique"], horizontal=True, label_visibility="collapsed")
+module_notes = {
+    "Vue nationale":"Synthèse des résultats et évolution des antigènes sur la période sélectionnée.",
+    "Priorisation OMS":"Classement décisionnel construit à partir de la couverture, de l’abandon et de la qualité du rapportage.",
+    "Couverture":"Analyse détaillée par antigène, avec tendances et comparaison des districts.",
+    "Abandon":"Repérage des ruptures entre Penta1 et Penta3 et suivi de leur évolution.",
+    "Zéro dose":"Localisation des enfants n’ayant pas reçu la première dose de vaccin contenant la valence diphtérie-tétanos-coqueluche.",
+    "Surveillance":"Suivi des cas notifiés de rougeole, PFA et tétanos néonatal.",
+    "Qualité DQA":"Contrôles de cohérence, complétude, promptitude et valeurs inhabituelles.",
+    "Alertes":"Registre opérationnel des anomalies nécessitant une vérification ou une action.",
+    "Géospatial":"Lecture territoriale des performances et des districts prioritaires.",
+    "Rapport OMS":"Production d’une note analytique mensuelle à partir des données filtrées.",
+    "Assistant analytique":"Explication structurée des facteurs de priorité pour chaque district.",
+}
+st.markdown(f'<div class="module-intro"><span>◉</span><span>{module_notes[module]}</span></div>', unsafe_allow_html=True)
 st.caption("Les seuils sont paramétrables et doivent être validés selon les normes nationales. Les graphiques peuvent être téléchargés avec l’icône appareil photo.")
 
 if module == "Vue nationale":
