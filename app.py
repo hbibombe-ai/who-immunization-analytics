@@ -102,12 +102,17 @@ def prepare(raw: pd.DataFrame) -> pd.DataFrame:
     frame["flag_reporting"] = (frame["reports_received"] > frame["reports_expected"]) | (frame["reports_timely"] > frame["reports_received"])
     frame["flag_missing"] = frame[required].isna().any(axis=1)
     frame["flag_quality"] = (frame["completeness"] < .95) | (frame["timeliness"] < .95)
-    frame["dqa_issue"] = frame[["flag_coverage", "flag_penta", "flag_reporting", "flag_missing", "flag_quality"]].any(axis=1)
-    coverage_deficit = (1 - frame["cov_penta3"] / .90).clip(0, 1)
-    zero_component = (frame["zero_rate"] / .30).clip(0, 1)
-    dropout_component = (frame["dropout"].clip(lower=0) / .30).clip(0, 1)
-    quality_component = (1 - frame[["completeness", "timeliness"]].mean(axis=1)).clip(0, 1)
-    frame["priority_score"] = 100 * (.40 * coverage_deficit + .30 * zero_component + .20 * dropout_component + .10 * quality_component)
+    ordered = frame.sort_values(["district", "period"])
+    ordered["penta3_variation"] = ordered.groupby("district")["penta3"].pct_change().abs()
+    frame["penta3_variation"] = ordered["penta3_variation"].reindex(frame.index)
+    frame["flag_variation"] = frame["penta3_variation"] > .50
+    frame["flag_dropout"] = frame["dropout"] > .10
+    frame["dqa_issue"] = frame[["flag_coverage", "flag_penta", "flag_reporting", "flag_missing", "flag_quality", "flag_variation"]].any(axis=1)
+    frame["priority_score"] = ((1 - frame["cov_penta3"]).clip(lower=0) * 40 + frame["dropout"].clip(lower=0) * 30 + (1 - frame["completeness"]).clip(lower=0) * 20 + (1 - frame["timeliness"]).clip(lower=0) * 10)
+    seed = (frame["year"] * 100 + frame["month_num"] * 7 + frame["district"].astype(str).map(lambda x: sum(map(ord, x)))).astype(int)
+    frame["cas_rougeole"] = (seed % 9 + (frame["cov_rougeole"] < .80).astype(int) * 4).astype(int)
+    frame["cas_pfa"] = (seed % 4).astype(int)
+    frame["cas_tetanos_neonatal"] = (seed % 3).astype(int)
     return frame
 
 
@@ -122,9 +127,15 @@ def aggregate(frame: pd.DataFrame, group: list[str]) -> pd.DataFrame:
     out["zero_rate"] = out["zero_dose"] / denominator
     out["completeness"] = out["reports_received"] / out["reports_expected"].replace(0, np.nan)
     out["timeliness"] = out["reports_timely"] / out["reports_expected"].replace(0, np.nan)
-    coverage_deficit = (1 - out["cov_penta3"] / .90).clip(0, 1)
-    out["priority_score"] = 100 * (.40 * coverage_deficit + .30 * (out["zero_rate"] / .30).clip(0, 1) + .20 * (out["dropout"].clip(lower=0) / .30).clip(0, 1) + .10 * (1 - out[["completeness", "timeliness"]].mean(axis=1)).clip(0, 1))
+    out["priority_score"] = ((1 - out["cov_penta3"]).clip(lower=0) * 40 + out["dropout"].clip(lower=0) * 30 + (1 - out["completeness"]).clip(lower=0) * 20 + (1 - out["timeliness"]).clip(lower=0) * 10)
     return out
+
+
+def priority_level(score: float) -> str:
+    if score >= 45: return "Critique"
+    if score >= 30: return "Élevée"
+    if score >= 15: return "Modérée"
+    return "Faible"
 
 
 def percent(value: float) -> str:
@@ -184,7 +195,16 @@ st.markdown(f"""<div class="cards">
 <div class="card" style="--accent:#15803d"><div class="label">Complétude</div><div class="value">{percent(completeness)}</div><div class="hint">rapports reçus / attendus</div></div>
 <div class="card" style="--accent:#dc2626"><div class="label">Lignes avec alerte DQA</div><div class="value">{int(df['dqa_issue'].sum())}</div><div class="hint">sur {len(df)} observations</div></div></div>""", unsafe_allow_html=True)
 
-module = st.radio("Module", ["Vue nationale", "Couverture", "Abandon", "Zéro dose", "Qualité DQA", "Géospatial", "Assistant analytique"], horizontal=True, label_visibility="collapsed")
+critical_count = int((df["flag_coverage"] | df["flag_penta"] | df["flag_reporting"] | df["flag_variation"]).sum())
+warning_count = int((df["flag_dropout"] | df["flag_quality"] | df["flag_missing"]).sum())
+if critical_count:
+    st.error(f"{critical_count} alertes critiques détectées. Consultez le module « Alertes » avant d’interpréter les résultats.", icon="🚨")
+elif warning_count:
+    st.warning(f"{warning_count} alertes nécessitent une vérification.", icon="⚠️")
+else:
+    st.success("Aucune alerte active pour les filtres sélectionnés.", icon="✅")
+
+module = st.radio("Module", ["Vue nationale", "Priorisation OMS", "Couverture", "Abandon", "Zéro dose", "Surveillance", "Qualité DQA", "Alertes", "Géospatial", "Rapport OMS", "Assistant analytique"], horizontal=True, label_visibility="collapsed")
 st.caption("Les seuils sont paramétrables et doivent être validés selon les normes nationales. Les graphiques peuvent être téléchargés avec l’icône appareil photo.")
 
 if module == "Vue nationale":
@@ -194,6 +214,17 @@ if module == "Vue nationale":
     fig.update_yaxes(tickformat=".0%", range=[0, max(1.05, chart_data["Couverture"].max() * 1.08)])
     st.plotly_chart(plot_style(fig, 430), width="stretch", config=PLOT_CONFIG)
     st.download_button("Télécharger la synthèse annuelle", csv_bytes(annual), "synthese_annuelle_pev.csv", "text/csv")
+
+elif module == "Priorisation OMS":
+    priority = aggregate(df, ["region", "district"]).sort_values("priority_score", ascending=False)
+    priority["niveau"] = priority["priority_score"].map(priority_level)
+    st.info("Score = (100 − couverture Penta3) × 40 % + abandon × 30 % + (100 − complétude) × 20 % + (100 − promptitude) × 10 %.")
+    cols = st.columns(4)
+    for box, level in zip(cols, ["Faible", "Modérée", "Élevée", "Critique"]): box.metric(level, int((priority["niveau"] == level).sum()))
+    fig = px.bar(priority.head(20).sort_values("priority_score"), x="priority_score", y="district", orientation="h", color="niveau", title="Districts les plus prioritaires", color_discrete_map={"Faible":"#15803d", "Modérée":"#eab308", "Élevée":"#f97316", "Critique":"#dc2626"})
+    st.plotly_chart(plot_style(fig, 520), width="stretch", config=PLOT_CONFIG)
+    st.dataframe(priority[["region", "district", "cov_penta3", "dropout", "completeness", "timeliness", "priority_score", "niveau"]], width="stretch", hide_index=True)
+    st.download_button("Télécharger la priorisation OMS", csv_bytes(priority), "priorisation_oms.csv", "text/csv")
 
 elif module == "Couverture":
     vaccine_label = st.selectbox("Vaccin", list(VACCINES))
@@ -222,40 +253,102 @@ elif module == "Abandon":
 
 elif module == "Zéro dose":
     district = aggregate(df, ["district"])[["district", "zero_dose", "zero_rate"]].sort_values("zero_dose", ascending=False)
+    monthly = aggregate(df, ["period"])
+    provinces = aggregate(df, ["region"])[["region", "zero_dose", "zero_rate"]].sort_values("zero_dose", ascending=False)
+    k1, k2, k3 = st.columns(3)
+    k1.metric("Nombre zéro dose", integer(zero)); k2.metric("Taux zéro dose", percent(zero_rate))
+    latest = monthly.sort_values("period").iloc[-1]
+    k3.metric("Dernier mois", integer(latest["zero_dose"]), percent(latest["zero_rate"]))
     c1, c2 = st.columns([1.2, 1])
     fig = px.bar(district.head(15).sort_values("zero_dose"), x="zero_dose", y="district", orientation="h", title="Distribution des enfants zéro dose", color="zero_rate", color_continuous_scale=["#fde68a", "#dc2626"])
     fig.update_layout(coloraxis_colorbar_title="Taux")
     c1.plotly_chart(plot_style(fig, 500), width="stretch", config=PLOT_CONFIG)
     c2.dataframe(district.rename(columns={"district":"District", "zero_dose":"Zéro dose", "zero_rate":"Taux zéro dose"}), width="stretch", hide_index=True, column_config={"Taux zéro dose": st.column_config.ProgressColumn(format="%.1f%%", min_value=0, max_value=.30)})
+    z1, z2 = st.columns(2)
+    z1.plotly_chart(plot_style(px.bar(provinces, x="zero_dose", y="region", orientation="h", title="Top provinces/préfectures", color_discrete_sequence=["#7c3aed"])), width="stretch", config=PLOT_CONFIG)
+    z2.plotly_chart(plot_style(px.line(monthly, x="period", y="zero_dose", markers=True, title="Tendance mensuelle zéro dose", color_discrete_sequence=["#7c3aed"])), width="stretch", config=PLOT_CONFIG)
     st.download_button("Télécharger les données zéro dose", csv_bytes(district), "zero_dose_par_district.csv", "text/csv")
 
+elif module == "Surveillance":
+    st.warning("Les données de maladies affichées sont simulées à des fins de démonstration. Ne pas les utiliser pour une décision sanitaire.")
+    diseases = {"Rougeole":"cas_rougeole", "PFA":"cas_pfa", "Tétanos néonatal":"cas_tetanos_neonatal"}
+    for col, (label, name) in zip(st.columns(3), diseases.items()): col.metric(label, integer(df[name].sum()))
+    trend = df.groupby("period", as_index=False)[list(diseases.values())].sum().rename(columns={v:k for k,v in diseases.items()}).melt("period", var_name="Maladie", value_name="Cas")
+    st.plotly_chart(plot_style(px.line(trend, x="period", y="Cas", color="Maladie", markers=True, title="Évolution mensuelle des cas simulés")), width="stretch", config=PLOT_CONFIG)
+    surveillance = df.groupby(["region", "district"], as_index=False)[list(diseases.values())].sum().sort_values("cas_rougeole", ascending=False)
+    st.dataframe(surveillance, width="stretch", hide_index=True)
+    st.download_button("Télécharger la surveillance simulée", csv_bytes(surveillance), "surveillance_simulee.csv", "text/csv")
+
 elif module == "Qualité DQA":
-    quality = pd.DataFrame({"Contrôle": ["Couverture > 100 %", "Penta3 > Penta1", "Rapportage incohérent", "Valeurs manquantes", "Complétude ou promptitude faible"], "Alertes": [df["flag_coverage"].sum(), df["flag_penta"].sum(), df["flag_reporting"].sum(), df["flag_missing"].sum(), df["flag_quality"].sum()]})
+    quality = pd.DataFrame({"Contrôle": ["Couverture > 100 %", "Penta3 > Penta1", "Variation mensuelle > 50 %", "Rapportage incohérent", "Valeurs manquantes", "Complétude ou promptitude faible"], "Alertes": [df["flag_coverage"].sum(), df["flag_penta"].sum(), df["flag_variation"].sum(), df["flag_reporting"].sum(), df["flag_missing"].sum(), df["flag_quality"].sum()]})
     fig = px.bar(quality, x="Alertes", y="Contrôle", orientation="h", title="Alertes de qualité des données", color="Alertes", color_continuous_scale=["#fef3c7", "#dc2626"])
     fig.update_layout(coloraxis_showscale=False)
     st.plotly_chart(plot_style(fig), width="stretch", config=PLOT_CONFIG)
     anomalies = df[df["dqa_issue"]].copy()
-    shown = anomalies[["year", "month", "region", "district", "flag_coverage", "flag_penta", "flag_reporting", "flag_missing", "flag_quality"]]
+    shown = anomalies[["year", "month", "region", "district", "cov_penta3", "dropout", "completeness", "timeliness", "flag_coverage", "flag_penta", "flag_variation", "flag_reporting", "flag_missing", "flag_quality"]].copy()
+    shown["niveau_risque_DQA"] = np.select([shown[["flag_coverage", "flag_penta", "flag_variation", "flag_reporting"]].any(axis=1), shown[["flag_missing", "flag_quality"]].any(axis=1)], ["Critique", "Élevé"], default="Faible")
     st.dataframe(shown, width="stretch", hide_index=True)
     st.download_button("Télécharger les anomalies DQA", csv_bytes(shown), "anomalies_dqa.csv", "text/csv")
+
+elif module == "Alertes":
+    alert_rows = []
+    rules = [
+        ("flag_coverage", "Critique", "Couverture supérieure à 100 %"),
+        ("flag_variation", "Critique", "Variation mensuelle Penta3 supérieure à 50 %"),
+        ("flag_reporting", "Critique", "Rapportage incohérent"),
+        ("flag_dropout", "Avertissement", "Abandon Penta1–Penta3 supérieur à 10 %"),
+        ("flag_quality", "Avertissement", "Complétude ou promptitude inférieure à 95 %"),
+        ("flag_missing", "Avertissement", "Valeur obligatoire manquante"),
+    ]
+    for flag, level, message in rules:
+        subset = df[df[flag]]
+        for _, row in subset.iterrows():
+            alert_rows.append({"Niveau": level, "Année": row["year"], "Mois": row["month"], "Province/Préfecture": row["region"], "District": row["district"], "Alerte": message})
+    alerts = pd.DataFrame(alert_rows)
+    a, b, c = st.columns(3)
+    a.metric("Alertes critiques", critical_count)
+    b.metric("Avertissements", warning_count)
+    a_rows = len(alerts) if not alerts.empty else 0
+    c.metric("Notifications détaillées", a_rows)
+    if alerts.empty:
+        st.success("Aucune alerte active.")
+    else:
+        selected_levels = st.multiselect("Niveau", ["Critique", "Avertissement"], default=["Critique", "Avertissement"])
+        displayed = alerts[alerts["Niveau"].isin(selected_levels)].sort_values(["Niveau", "Année", "Mois", "District"])
+        st.dataframe(displayed, width="stretch", hide_index=True)
+        st.download_button("Télécharger le registre des alertes", csv_bytes(displayed), "registre_alertes_pev.csv", "text/csv")
 
 elif module == "Géospatial":
     geo = aggregate(df, ["district"])
     coords = df.groupby("district", as_index=False)[["latitude", "longitude"]].mean()
     geo = geo.merge(coords, on="district", how="left")
-    geo["niveau"] = pd.cut(geo["priority_score"], bins=[-1,25,50,75,101], labels=["Faible", "Modéré", "Élevé", "Critique"])
-    fig = px.scatter_map(geo, lat="latitude", lon="longitude", size="zero_dose", color="niveau", hover_name="district", hover_data={"priority_score":":.1f", "cov_penta3":":.1%", "dropout":":.1%", "zero_rate":":.1%"}, color_discrete_map={"Faible":"#15803d", "Modéré":"#eab308", "Élevé":"#f97316", "Critique":"#dc2626"}, zoom=4.2, height=570, title="Carte décisionnelle des districts prioritaires", map_style="open-street-map")
+    geo["niveau"] = geo["priority_score"].map(priority_level)
+    map_indicator = st.selectbox("Indicateur cartographique", ["Score de risque", "Couverture Penta3", "Abandon", "Zéro dose"])
+    sizes = {"Score de risque":"priority_score", "Couverture Penta3":"cov_penta3", "Abandon":"dropout", "Zéro dose":"zero_dose"}
+    fig = px.scatter_map(geo, lat="latitude", lon="longitude", size=sizes[map_indicator], color="niveau", hover_name="district", hover_data={"priority_score":":.1f", "cov_penta3":":.1%", "dropout":":.1%", "zero_dose":":,.0f", "completeness":":.1%", "timeliness":":.1%"}, color_discrete_map={"Faible":"#15803d", "Modérée":"#eab308", "Élevée":"#f97316", "Critique":"#dc2626"}, zoom=4.2, height=570, title=f"Carte des districts — {map_indicator}", map_style="open-street-map")
     fig.update_layout(margin=dict(l=10,r=10,t=55,b=10))
     st.plotly_chart(fig, width="stretch", config=PLOT_CONFIG)
     ranking = geo.sort_values("priority_score", ascending=False)
     st.dataframe(ranking[["district", "priority_score", "cov_penta3", "dropout", "zero_dose", "completeness", "niveau"]], width="stretch", hide_index=True)
     st.download_button("Télécharger le classement prioritaire", csv_bytes(ranking), "districts_prioritaires.csv", "text/csv")
 
+elif module == "Rapport OMS":
+    monthly = aggregate(df, ["period"]).sort_values("period")
+    report_month = st.selectbox("Mois du rapport", monthly["period"].tolist(), index=len(monthly)-1, format_func=lambda x: x.strftime("%m/%Y"))
+    period_df = df[df["period"] == report_month]
+    summary = aggregate(period_df, ["period"]).iloc[0]
+    ranked = aggregate(period_df, ["district"]).sort_values("priority_score", ascending=False)
+    names = ", ".join(ranked.head(3)["district"].astype(str))
+    text_report = (f"Rapport mensuel PEV — {report_month.strftime('%m/%Y')}\n\nLa couverture Penta3 était de {percent(summary['cov_penta3'])}, " f"{'en dessous' if summary['cov_penta3'] < .90 else 'au-dessus'} de la cible opérationnelle indicative de 90 %. Le taux d’abandon Penta1–Penta3 était de {percent(summary['dropout'])}, avec environ {integer(summary['zero_dose'])} enfants zéro dose. La complétude atteignait {percent(summary['completeness'])} et la promptitude {percent(summary['timeliness'])}. Les districts les plus préoccupants selon le score OMS étaient {names}. Ces résultats doivent être validés avec les équipes du programme avant toute décision.")
+    st.text_area("Note analytique générée", text_report, height=230)
+    st.download_button("Télécharger le rapport mensuel", text_report.encode("utf-8"), f"rapport_OMS_{report_month:%Y_%m}.txt", "text/plain")
+    st.dataframe(ranked[["district", "cov_penta3", "dropout", "zero_dose", "completeness", "timeliness", "priority_score"]].head(10), width="stretch", hide_index=True)
+
 else:
     district_table = aggregate(df, ["district"]).sort_values("priority_score", ascending=False)
     selected = st.selectbox("District à expliquer", district_table["district"].tolist())
     row = district_table[district_table["district"] == selected].iloc[0]
-    level = "critique" if row["priority_score"] >= 75 else "élevée" if row["priority_score"] >= 50 else "modérée" if row["priority_score"] >= 25 else "faible"
+    level = priority_level(row["priority_score"]).lower()
     st.subheader(f"Pourquoi {selected} est-il prioritaire ?")
     st.info(f"Le district présente une couverture Penta3 de {percent(row['cov_penta3'])}, un taux d’abandon de {percent(row['dropout'])}, environ {integer(row['zero_dose'])} enfants zéro dose et une complétude de {percent(row['completeness'])}. Son score de priorité est de {row['priority_score']:.1f}/100, correspondant à une priorité {level}.")
     st.caption("Cette explication est générée à partir des indicateurs calculés. Elle ne remplace pas l’interprétation d’un responsable du programme.")
