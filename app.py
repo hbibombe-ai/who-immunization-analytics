@@ -39,25 +39,25 @@ SOURCE_COLUMNS = {
 st.set_page_config(page_title="WHO Immunization Analytics", page_icon="💉", layout="wide")
 st.markdown("""
 <style>
-:root{--navy:#0b2447;--blue:#2563eb;--cyan:#0891b2;--green:#059669;--amber:#d97706;--red:#dc2626;--line:#dce7f2;--ink:#14213d}
-.stApp{background:radial-gradient(circle at 92% 2%,rgba(14,165,233,.10),transparent 25rem),linear-gradient(180deg,#f8fbff 0%,#f4f7fb 100%)}
+:root{--navy:#155268;--deep:#103f54;--coral:#ff7d6d;--turquoise:#10c7b2;--yellow:#ffc95f;--blue:#2563eb;--cyan:#0891b2;--green:#059669;--amber:#d97706;--red:#dc2626;--line:#d7e2e3;--ink:#183b4d}
+.stApp{background:radial-gradient(circle at 92% 2%,rgba(16,199,178,.10),transparent 25rem),#f4f6f5}
 .block-container{max-width:1500px;padding-top:1rem;padding-bottom:2.5rem}
-[data-testid="stSidebar"]{background:linear-gradient(180deg,#fff 0%,#f3f8fd 100%);border-right:1px solid #d7e5f2}
-[data-testid="stSidebar"] h2,[data-testid="stSidebar"] h3{color:var(--navy)}
-.hero{position:relative;overflow:hidden;background:linear-gradient(125deg,#0b2447 0%,#075985 48%,#07856f 100%);padding:1.65rem 1.8rem;border-radius:22px;color:#fff;margin-bottom:1rem;box-shadow:0 14px 35px rgba(11,36,71,.18)}
-.hero:before,.hero:after{content:"";position:absolute;border-radius:999px;background:rgba(255,255,255,.08)}
-.hero:before{width:220px;height:220px;right:-60px;top:-130px}.hero:after{width:120px;height:120px;right:130px;bottom:-85px}
-.hero h1{position:relative;color:#fff;font-size:2.15rem;line-height:1.15;margin:.25rem 0 .55rem}.hero p{position:relative;color:#dff7ff;margin:0;font-size:1rem}.hero small{position:relative;color:#a5f3fc;font-weight:800;letter-spacing:.16em}
+[data-testid="stSidebar"]{background:linear-gradient(180deg,var(--deep),var(--navy));border-right:0}
+[data-testid="stSidebar"] h2,[data-testid="stSidebar"] h3,[data-testid="stSidebar"] label,[data-testid="stSidebar"] [data-testid="stCaptionContainer"]{color:#f4fbfb!important}[data-testid="stSidebar"] .stButton button{background:var(--coral);color:#fff;border:0}[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"]{background:rgba(255,255,255,.96)}[data-testid="stSidebar"] [data-baseweb="select"]>div{background:#fff}
+.hero{position:relative;overflow:hidden;background:linear-gradient(115deg,var(--deep),var(--navy));padding:1.55rem 1.8rem;border-radius:18px;border-left:10px solid var(--coral);color:#fff;margin-bottom:1rem;box-shadow:0 14px 35px rgba(11,36,71,.18)}
+.hero:after{content:"✚";position:absolute;right:2rem;top:-2.8rem;font-size:10rem;color:rgba(16,199,178,.17)}
+.hero h1{position:relative;color:#fff;font-size:2.15rem;line-height:1.15;margin:.25rem 0 .55rem}.hero p{position:relative;color:#e8fbf8;margin:0;font-size:1rem}.hero small{position:relative;color:var(--yellow);font-weight:800;letter-spacing:.16em}
 .cards{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:13px;margin:1rem 0 1rem}
-.card{position:relative;overflow:hidden;background:linear-gradient(145deg,#fff,#fbfdff);border:1px solid var(--line);border-top:4px solid var(--accent);border-radius:17px;padding:1rem;box-shadow:0 7px 20px rgba(30,64,100,.07);transition:transform .2s ease,box-shadow .2s ease}
+.card{position:relative;overflow:hidden;background:var(--accent);border:0;border-radius:15px;padding:1rem;min-height:125px;box-shadow:0 8px 19px rgba(30,64,100,.11);transition:transform .2s ease,box-shadow .2s ease}
+.card:nth-child(1),.card:nth-child(5){background:linear-gradient(135deg,#ff8e7d,var(--coral))}.card:nth-child(2),.card:nth-child(4){background:linear-gradient(135deg,#20d1bd,#08afac)}.card:nth-child(3){background:linear-gradient(135deg,#ffda82,var(--yellow))}
 .card:hover{transform:translateY(-3px);box-shadow:0 12px 25px rgba(30,64,100,.12)}
-.card:after{content:"";position:absolute;width:58px;height:58px;border-radius:50%;right:-25px;bottom:-25px;background:var(--accent);opacity:.10}
-.label{color:#52657a;font-size:.79rem;font-weight:750;min-height:2.1em}.value{font-size:1.72rem;font-weight:800;color:var(--ink);letter-spacing:-.03em}.hint{font-size:.73rem;color:var(--accent);font-weight:700;margin-top:.15rem}
-.module-intro{display:flex;gap:.7rem;align-items:center;background:linear-gradient(90deg,#eaf4ff,#eefbf8);border:1px solid #cfe2f3;border-left:5px solid #0891b2;border-radius:12px;padding:.7rem .9rem;margin:.45rem 0 .8rem;color:#27445f;font-size:.88rem}
-div[data-testid="stRadio"]>div{gap:.35rem}div[data-testid="stRadio"] label{background:#fff;border:1px solid #d7e3ee;border-radius:999px;padding:.34rem .62rem;box-shadow:0 2px 6px rgba(30,64,100,.04)}
-div[data-testid="stRadio"] label:has(input:checked){background:linear-gradient(120deg,#e0f2fe,#dcfce7);border-color:#38bdf8;color:#075985;font-weight:700}
-div[data-testid="stPlotlyChart"],div[data-testid="stDataFrame"]{background:rgba(255,255,255,.96);border:1px solid var(--line);border-radius:17px;padding:.25rem;overflow:hidden;box-shadow:0 6px 18px rgba(30,64,100,.06)}
-div[data-testid="stMetric"]{background:#fff;border:1px solid var(--line);border-radius:15px;padding:.8rem 1rem;box-shadow:0 5px 15px rgba(30,64,100,.06)}
+.card:after{content:"";position:absolute;width:58px;height:58px;border-radius:50%;right:-25px;bottom:-25px;background:#fff;opacity:.10}
+.label{color:rgba(255,255,255,.9);font-size:.76rem;font-weight:800;text-transform:uppercase;letter-spacing:.025em;min-height:2.1em}.value{font-size:1.78rem;font-weight:900;color:#fff;letter-spacing:-.03em}.hint{font-size:.72rem;color:rgba(255,255,255,.9);font-weight:750;margin-top:.15rem}.card:nth-child(3) .label,.card:nth-child(3) .value,.card:nth-child(3) .hint{color:#4f4750}
+.module-intro{display:flex;gap:.7rem;align-items:center;background:linear-gradient(90deg,#e5faf7,#fff7df);border:1px solid #cee7e4;border-left:6px solid var(--coral);border-radius:12px;padding:.72rem .95rem;margin:.5rem 0 .85rem;color:#315469;font-size:.88rem}
+div[data-testid="stRadio"]>div{gap:.35rem}div[data-testid="stRadio"] label{background:#fff;border:1px solid #cbdadd;border-radius:9px;padding:.34rem .62rem;box-shadow:0 2px 6px rgba(30,64,100,.04)}
+div[data-testid="stRadio"] label:has(input:checked){background:var(--coral);border-color:var(--coral);color:#fff;font-weight:800}
+div[data-testid="stPlotlyChart"],div[data-testid="stDataFrame"]{background:rgba(255,255,255,.98);border:2px solid #cbdadd;border-radius:17px;padding:.25rem;overflow:hidden;box-shadow:0 6px 18px rgba(30,64,100,.05)}
+div[data-testid="stMetric"]{background:#fff;border:2px solid #cbdadd;border-radius:15px;padding:.8rem 1rem;box-shadow:0 5px 15px rgba(30,64,100,.05)}
 .stDownloadButton button,.stButton button{border-radius:11px;min-height:2.65rem;font-weight:700;border-color:#bdd4e8}.stDownloadButton button:hover,.stButton button:hover{border-color:#0891b2;color:#075985;background:#ecfeff}
 div[data-baseweb="notification"]{border-radius:13px;box-shadow:0 5px 16px rgba(30,64,100,.06)}
 hr{border-color:#dce7f2}
@@ -215,7 +215,15 @@ def csv_bytes(frame: pd.DataFrame) -> bytes:
 
 
 def plot_style(fig, height=390):
-    fig.update_layout(template="plotly_white", height=height, margin=dict(l=15, r=15, t=55, b=25), paper_bgcolor="rgba(0,0,0,0)", font=dict(family="Arial", color="#334155"), legend_title_text="")
+    fig.update_layout(
+        template="plotly_white",
+        height=height,
+        margin=dict(l=15, r=15, t=55, b=25),
+        paper_bgcolor="rgba(0,0,0,0)",
+        font=dict(family="Arial", color="#334155"),
+        legend_title_text="",
+        colorway=["#155268", "#10c7b2", "#ff7d6d", "#ffc95f", "#2563eb", "#7c3aed"],
+    )
     fig.update_xaxes(gridcolor="#edf2f7"); fig.update_yaxes(gridcolor="#edf2f7")
     return fig
 
@@ -250,14 +258,18 @@ with st.sidebar:
     st.caption("Source : " + source_name)
     st.subheader("Filtres")
     years = sorted(df["year"].unique())
-    selected_years = st.multiselect("Année", years, default=years)
-    if selected_years: df = df[df["year"].isin(selected_years)]
+    selected_year = st.selectbox("Année", ["Toutes les années", *years])
+    if selected_year != "Toutes les années":
+        df = df[df["year"] == selected_year]
     regions = sorted(df["region"].dropna().astype(str).unique())
-    selected_regions = st.multiselect("Province/Préfecture", regions, default=regions)
-    if selected_regions: df = df[df["region"].astype(str).isin(selected_regions)]
+    selected_region = st.selectbox("Province/Préfecture", ["Toutes les provinces/préfectures", *regions])
+    if selected_region != "Toutes les provinces/préfectures":
+        df = df[df["region"].astype(str) == selected_region]
     districts = sorted(df["district"].dropna().astype(str).unique())
-    selected_districts = st.multiselect("District", districts, default=districts)
-    if selected_districts: df = df[df["district"].astype(str).isin(selected_districts)]
+    selected_district = st.selectbox("District", ["Tous les districts", *districts])
+    if selected_district != "Tous les districts":
+        df = df[df["district"].astype(str) == selected_district]
+    st.caption(f"Périmètre actif : {len(df):,} observations".replace(",", " "))
 
 if df.empty:
     st.warning("Aucune donnée ne correspond aux filtres."); st.stop()
@@ -359,8 +371,8 @@ elif module == "Zéro dose":
     c1.plotly_chart(plot_style(fig, 500), width="stretch", config=PLOT_CONFIG)
     c2.dataframe(district.rename(columns={"district":"District", "zero_dose":"Zéro dose", "zero_rate":"Taux zéro dose"}), width="stretch", hide_index=True, column_config={"Taux zéro dose": st.column_config.ProgressColumn(format="%.1f%%", min_value=0, max_value=.30)})
     z1, z2 = st.columns(2)
-    z1.plotly_chart(plot_style(px.bar(provinces, x="zero_dose", y="region", orientation="h", title="Top provinces/préfectures", color_discrete_sequence=["#7c3aed"])), width="stretch", config=PLOT_CONFIG)
-    z2.plotly_chart(plot_style(px.line(monthly, x="period", y="zero_dose", markers=True, title="Tendance mensuelle zéro dose", color_discrete_sequence=["#7c3aed"])), width="stretch", config=PLOT_CONFIG)
+    z1.plotly_chart(plot_style(px.bar(provinces, x="zero_dose", y="region", orientation="h", title="Top provinces/préfectures", color_discrete_sequence=["#ff7d6d"])), width="stretch", config=PLOT_CONFIG)
+    z2.plotly_chart(plot_style(px.line(monthly, x="period", y="zero_dose", markers=True, title="Tendance mensuelle zéro dose", color_discrete_sequence=["#10c7b2"])), width="stretch", config=PLOT_CONFIG)
     st.download_button("Télécharger les données zéro dose", csv_bytes(district), "zero_dose_par_district.csv", "text/csv")
 
 elif module == "Surveillance":
